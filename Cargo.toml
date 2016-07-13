@@ -1,0 +1,10 @@
+[package]
+name = "netfuse"
+version = "0.1.0"
+authors = ["Anthony Nowell <anowell@gmail.com>"]
+
+[dependencies]
+fuse = "0.2.7"
+time = "0.1.35"
+libc = "0.2.12"
+sequence_trie = "0.0.13"
