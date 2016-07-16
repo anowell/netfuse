@@ -2,7 +2,7 @@ use fuse::FileType;
 use libc::{self, ENOSYS};
 use time::Timespec;
 use std::path::Path;
-
+use std::ffi::{OsStr, OsString};
 
 pub type LibcError = libc::c_int;
 
@@ -17,17 +17,22 @@ pub struct Metadata {
 }
 
 /// Represents a single entry of a directory listing
-///   where the first element is the filename, and the second is the file metadata
-pub type DirEntry = (String, Metadata);
+pub struct DirEntry {
+    pub filename: OsString,
+    pub metadata: Metadata,
+}
+
+impl DirEntry {
+    pub fn new<S: AsRef<OsStr>>(filename: S, metadata: Metadata) -> DirEntry {
+        DirEntry { filename: filename.as_ref().to_owned(), metadata: metadata }
+    }
+}
 
 pub trait NetworkFilesystem {
 
     /// Any arbitrary code to run when mounting
-    ///
-    /// May optionally return a Vec of Metadata that will be
-    ///   pre-populated into the inode store
-    fn init(&mut self) -> Result<Vec<Metadata>, LibcError> {
-        Err(ENOSYS)
+    fn init(&mut self) -> Result<(), LibcError> {
+        Ok(())
     }
 
     /// Returns the metadata for a file or directory associated with a given

@@ -11,7 +11,7 @@ pub use nfs::*;
 use inode::InodeStore;
 use cache::CacheEntry;
 
-use libc::{EIO, ENOENT};
+use libc::{EIO, ENOENT, c_int};
 use fuse::{FileType, FileAttr, Filesystem, Request, ReplyEntry, ReplyAttr, ReplyData, ReplyDirectory, ReplyOpen, ReplyEmpty, ReplyWrite};
 use std::collections::HashMap;
 use std::path::Path;
@@ -112,6 +112,10 @@ fn get_basename(path: &Path) -> &OsStr {
 }
 
 impl <NFS: NetworkFilesystem> Filesystem for NetFuse<NFS> {
+
+    fn init(&mut self, _req: &Request) -> Result<(), c_int> {
+        self.nfs.init()
+    }
 
     // If parent is marked visited, then only perform lookup in the cache
     // otherwise, if the cache lookup is a miss, perform the network lookup
@@ -215,10 +219,10 @@ impl <NFS: NetworkFilesystem> Filesystem for NetFuse<NFS> {
                 let ref mut nfs = self.nfs;
                 for (i, next) in nfs.readdir(&parent_path).enumerate().skip(offset as usize) {
                     match next {
-                        Ok((filename, meta)) => {
-                            let child_path = parent_path.join(&filename);
-                            let inode = self.inodes.insert_metadata(&child_path, &meta);
-                            reply.add(inode.attr.ino, i as u64 + offset + 2, inode.attr.kind, &filename);
+                        Ok(entry) => {
+                            let child_path = parent_path.join(&entry.filename);
+                            let inode = self.inodes.insert_metadata(&child_path, &entry.metadata);
+                            reply.add(inode.attr.ino, i as u64 + offset + 2, inode.attr.kind, &entry.filename);
                         }
                         Err(err) => { return reply.error(err); }
                     }

@@ -3,7 +3,7 @@ use sequence_trie::SequenceTrie;
 use std::collections::HashMap;
 use std::ops::{Index, IndexMut};
 use time;
-use std::ffi::OsString;
+use std::ffi::{OsStr, OsString};
 use std::path::{Path, PathBuf};
 use super::Metadata;
 
@@ -70,8 +70,17 @@ impl InodeStore {
         self.inode_map.get(&ino)
     }
 
+    pub fn get_by_path<P: AsRef<Path>>(&self, path: P) -> Option<&Inode> {
+        let sequence = path_to_sequence(path.as_ref());
+        self.ino_trie.get(&sequence).and_then(|ino| self.get(*ino))
+    }
+
     pub fn insert_metadata<P: AsRef<Path>>(&mut self, path: P, metadata: &Metadata) -> &Inode {
-        let ino = self.len() as u64 + 1;
+        let ino = match self.get_by_path(path.as_ref()) {
+            Some(inode) => inode.attr.ino,
+            None => self.len() as u64 + 1,
+        };
+
         println!("insert metadata: {} {}", ino, path.as_ref().display());
 
         let attr = FileAttr {
@@ -91,16 +100,15 @@ impl InodeStore {
             flags: 0,
         };
 
-        // TODO: stop using to_string_lossy, and make the inode trie built from OsStr components
         self.insert(Inode::new(path, attr));
         self.get(ino).unwrap()
     }
 
-    pub fn child(&self, ino: u64, name: &Path) -> Option<&Inode> {
+    pub fn child<S: AsRef<OsStr>>(&self, ino: u64, name: S) -> Option<&Inode> {
         self.get(ino)
             .and_then(|inode| {
                 let mut sequence = path_to_sequence(&inode.path);
-                sequence.push(name.as_os_str().into());
+                sequence.push(name.as_ref().to_owned());
                 self.ino_trie.get(&sequence).and_then(|ino| self.get(*ino) )
             })
     }
@@ -142,6 +150,12 @@ impl InodeStore {
     pub fn get_mut(&mut self, ino: u64) -> Option<&mut Inode> {
         self.inode_map.get_mut(&ino)
     }
+
+    // pub fn get_mut_by_path<P: AsRef<Path>>(&mut self, path: P) -> Option<&mut Inode> {
+    //     let sequence = path_to_sequence(path.as_ref());
+    //     self.ino_trie.get(&sequence).cloned()
+    //         .and_then(move |ino| self.get_mut(ino))
+    // }
 
     // Only insert new node. Panics if there is an ino collision in the map or trie
     pub fn insert(&mut self, inode: Inode) {
@@ -259,6 +273,16 @@ mod tests {
     }
 
     #[test]
+    fn test_inode_store_get_by_path() {
+        let store = build_basic_store();
+        assert_eq!(store.get_by_path("/").unwrap().attr.ino, 1);
+        assert_eq!(store.get_by_path("/data").unwrap().attr.ino, 2);
+        assert_eq!(store.get_by_path("/data/foo.txt").unwrap().attr.ino, 3);
+        assert_eq!(store.get_by_path("/data/bar.txt").unwrap().attr.ino, 4);
+    }
+
+
+    #[test]
     fn test_inode_store_get_mut() {
         let mut store = build_basic_store();
         {
@@ -269,6 +293,16 @@ mod tests {
         assert_eq!(store.get(3).unwrap().attr.size, 23);
     }
 
+    // #[test]
+    // fn test_inode_store_get_mut_by_path() {
+    //     let mut store = build_basic_store();
+    //     {
+    //         let mut inode = store.get_mut_by_path("/data/foo.txt").unwrap();
+    //         assert_eq!(inode.attr.size, 42);
+    //         inode.attr.size = 23;
+    //     }
+    //     assert_eq!(store.get_by_path("/data/foo.txt").unwrap().attr.size, 23);
+    // }
 
     #[test]
     fn test_inode_store_parent() {
