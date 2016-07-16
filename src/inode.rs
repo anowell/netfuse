@@ -2,7 +2,9 @@ use fuse::{FileType, FileAttr};
 use sequence_trie::SequenceTrie;
 use std::collections::HashMap;
 use std::ops::{Index, IndexMut};
+use std::path::Path;
 use time;
+use super::Metadata;
 
 #[derive(Debug, Clone)]
 pub struct Inode {
@@ -24,6 +26,8 @@ impl Inode {
 pub struct InodeStore {
     inode_map: HashMap<u64, Inode>,
     ino_trie: SequenceTrie<String, u64>,
+    uid: u32,
+    gid: u32,
 }
 
 impl InodeStore {
@@ -31,6 +35,8 @@ impl InodeStore {
         let mut store = InodeStore {
             inode_map: HashMap::new(),
             ino_trie: SequenceTrie::new(),
+            uid: uid,
+            gid: gid,
         };
 
         let now = time::now_utc().to_timespec();
@@ -61,6 +67,32 @@ impl InodeStore {
 
     pub fn get(&self, ino: u64) -> Option<&Inode> {
         self.inode_map.get(&ino)
+    }
+
+    pub fn insert_metadata(&mut self, path: &Path, metadata: &Metadata) -> &Inode {
+        let ino = self.len() as u64 + 1;
+        println!("insert metadata: {} {}", ino, path.display());
+
+        let attr = FileAttr {
+            ino: ino,
+            size: metadata.size,
+            blocks: 0,
+            atime: metadata.atime,
+            mtime: metadata.mtime,
+            ctime: metadata.ctime,
+            crtime: metadata.crtime,
+            kind: metadata.kind,
+            perm: metadata.perm,
+            nlink: 0,
+            uid: self.uid,
+            gid: self.gid,
+            rdev: 0,
+            flags: 0,
+        };
+
+        // TODO: stop using to_string_lossy, and make the inode trie built from OsStr components
+        self.insert(Inode::new(&path.to_string_lossy(), attr));
+        self.get(ino).unwrap()
     }
 
     pub fn child(&self, ino: u64, name: &str) -> Option<&Inode> {

@@ -7,8 +7,8 @@ mod inode;
 mod cache;
 mod nfs;
 
-pub use nfs::{NetworkFilesystem, Metadata, LibcError};
-use inode::{Inode, InodeStore};
+pub use nfs::*;
+use inode::InodeStore;
 use cache::CacheEntry;
 
 use libc::{EIO, ENOENT};
@@ -42,8 +42,6 @@ pub struct NetFuse<NFS: NetworkFilesystem> {
     nfs: NFS,
     /// map of inodes to to data buffers - indexed by inode (NOT inode-1)
     cache: HashMap<u64, CacheEntry>,
-    uid: u32,
-    gid: u32,
 }
 
 pub fn mount<NFS: NetworkFilesystem>(fs: NFS, options: MountOptions) {
@@ -51,39 +49,11 @@ pub fn mount<NFS: NetworkFilesystem>(fs: NFS, options: MountOptions) {
         nfs: fs,
         inodes: InodeStore::new(0o550, options.uid, options.gid),
         cache: HashMap::new(),
-        uid: options.uid,
-        gid: options.gid,
     };
     fuse::mount(netfuse, &options.path, &[]);
 }
 
 impl <NFS: NetworkFilesystem> NetFuse<NFS> {
-    fn insert_metadata(&mut self, path: &Path, metadata: &Metadata) -> &Inode {
-        let ref mut inodes = self.inodes;
-        let ino = inodes.len() as u64 + 1;
-        println!("insert metadata: {} {}", ino, path.display());
-
-        let attr = FileAttr {
-            ino: ino,
-            size: metadata.size,
-            blocks: 0,
-            atime: metadata.atime,
-            mtime: metadata.mtime,
-            ctime: metadata.ctime,
-            crtime: metadata.crtime,
-            kind: metadata.kind,
-            perm: metadata.perm,
-            nlink: 0,
-            uid: self.uid,
-            gid: self.gid,
-            rdev: 0,
-            flags: 0,
-        };
-        // TODO: stop using to_string_lossy, and make the inode trie built from OsStr components
-        inodes.insert(Inode::new(&path.to_string_lossy(), attr));
-        inodes.get(ino).unwrap()
-    }
-
     fn cache_readdir<'a>(&'a mut self, ino: u64) -> Box<Iterator<Item=Result<(String, FileAttr), LibcError>> + 'a> {
         let iter = self.inodes
                         .children(ino)
@@ -162,7 +132,7 @@ impl <NFS: NetworkFilesystem> Filesystem for NetFuse<NFS> {
                     let child_path = Path::new(&child_path_str);
                     match self.nfs.lookup(&child_path) {
                         Ok(child_metadata) => {
-                            let inode = self.insert_metadata(&child_path, &child_metadata);
+                            let inode = self.inodes.insert_metadata(&child_path, &child_metadata);
                             reply.entry(&DEFAULT_TTL, &inode.attr, 0)
                         }
                         Err(err) => {
@@ -245,11 +215,12 @@ impl <NFS: NetworkFilesystem> Filesystem for NetFuse<NFS> {
             false => {
                 // FIXME: sometimes cloning is just easier than fixing borrows
                 let parent_path = self.inodes[ino].path.clone();
-                for (i, next) in self.nfs.readdir(&Path::new(&parent_path)).enumerate().skip(offset as usize) {
+                let ref mut nfs = self.nfs;
+                for (i, next) in nfs.readdir(&Path::new(&parent_path)).enumerate().skip(offset as usize) {
                     match next {
                         Ok((filename, meta)) => {
                             let child_path = format!("{}/{}", parent_path, filename);
-                            let inode = self.insert_metadata(&Path::new(&child_path), &meta);
+                            let inode = self.inodes.insert_metadata(&Path::new(&child_path), &meta);
                             reply.add(inode.attr.ino, i as u64 + offset + 2, inode.attr.kind, &filename);
                         }
                         Err(err) => { return reply.error(err); }
@@ -257,6 +228,12 @@ impl <NFS: NetworkFilesystem> Filesystem for NetFuse<NFS> {
                 }
             }
         };
+
+        // Mark this node visited
+        let ref mut inodes = self.inodes;
+        let mut dir_inode = inodes.get_mut(ino).expect("inode missing for dir just listed");
+        dir_inode.visited = true;
+
         reply.ok();
     }
 
@@ -281,7 +258,7 @@ impl <NFS: NetworkFilesystem> Filesystem for NetFuse<NFS> {
         };
 
         // FIXME: cloning because it's quick-and-dirty
-        let attr = self.insert_metadata(&Path::new(&path), &meta).attr.clone();
+        let attr = self.inodes.insert_metadata(&Path::new(&path), &meta).attr.clone();
 
         // Need to add an entry and declare it warm, so that empty files can be created on release/fsync
         //   but don't increment opened handles until `open` is called
@@ -312,7 +289,7 @@ impl <NFS: NetworkFilesystem> Filesystem for NetFuse<NFS> {
                     perm: _mode as u16,  // TODO: should this be based on _mode or parent
                 };
 
-                let attr = self.insert_metadata(&path, &meta).attr;
+                let attr = self.inodes.insert_metadata(&path, &meta).attr;
 
                 // TODO: figure out when/if I should be using a generation number:
                 //       https://github.com/libfuse/libfuse/blob/842b59b996e3db5f92011c269649ca29f144d35e/include/fuse_lowlevel.h#L78-L91

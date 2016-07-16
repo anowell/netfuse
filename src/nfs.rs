@@ -45,7 +45,7 @@ pub trait NetworkFilesystem {
     ///
     /// Note: the cache implementation will likely change to keep data around a bit longer
     ///   though I expect such changes will come with configurable parameters
-    fn read(&mut self, _path: &Path, _buffer: &mut Vec<u8> ) -> Result<u64, LibcError>{
+    fn read(&mut self, _path: &Path, _buffer: &mut Vec<u8> ) -> Result<usize, LibcError> {
         Err(ENOSYS)
     }
 
@@ -58,7 +58,7 @@ pub trait NetworkFilesystem {
     ///
     /// Will only be called if a previous `lookup` has confirmed a file exists at this path
     /// This is also only called if the volume is mounted with the `rw` option
-    fn write(&mut self, _path: &Path, _data: &[u8]) -> Result<(), LibcError>{
+    fn write(&mut self, _path: &Path, _data: &[u8]) -> Result<(), LibcError> {
         Err(ENOSYS)
     }
 
@@ -66,13 +66,15 @@ pub trait NetworkFilesystem {
     ///
     /// The returned iterator should iterate of a tuple pairing of filename with file metadata
     ///
-    /// TODO: return `Result<impl Iterator<(String, M...>` once `impl Trait` lands in nightly
-    fn readdir<'a, 'b, 'c>(&'a mut self, _path: &'b Path) -> Box<Iterator<Item=Result<DirEntry, LibcError>> + 'c>;
+    /// TODO: return `impl Iterator<Item=Result<DirEntry, LibcError>>` once `impl Trait` lands in nightly
+    fn readdir(&mut self, _path: &Path) -> Box<Iterator<Item=Result<DirEntry, LibcError>>> {
+        Box::new(vec![Err(ENOSYS)].into_iter())
+    }
 
     /// Creates an empty directory for the given path
     ///
     /// This is only called if the volume is mounted with the `rw` option
-    fn mkdir(&mut self, _path: &Path) -> Result<(), LibcError>{
+    fn mkdir(&mut self, _path: &Path) -> Result<(), LibcError> {
         Err(ENOSYS)
     }
 
@@ -82,7 +84,7 @@ pub trait NetworkFilesystem {
     /// Generally, you'll want to return ENOTEMPTY if the directory is not empty
     ///
     /// This is only called if the volume is mounted with the `rw` option
-    fn rmdir(&mut self, _path: &Path) -> Result<(), LibcError>{
+    fn rmdir(&mut self, _path: &Path) -> Result<(), LibcError> {
         Err(ENOSYS)
     }
 
