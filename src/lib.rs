@@ -15,6 +15,7 @@ use libc::{EIO, ENOENT};
 use fuse::{FileType, FileAttr, Filesystem, Request, ReplyEntry, ReplyAttr, ReplyData, ReplyDirectory, ReplyOpen, ReplyEmpty, ReplyWrite};
 use std::collections::HashMap;
 use std::path::Path;
+use std::ffi::{OsStr, OsString};
 use time::Timespec;
 
 const DEFAULT_TTL: Timespec = Timespec { sec: 1, nsec: 0 };
@@ -54,7 +55,7 @@ pub fn mount<NFS: NetworkFilesystem>(fs: NFS, options: MountOptions) {
 }
 
 impl <NFS: NetworkFilesystem> NetFuse<NFS> {
-    fn cache_readdir<'a>(&'a mut self, ino: u64) -> Box<Iterator<Item=Result<(String, FileAttr), LibcError>> + 'a> {
+    fn cache_readdir<'a>(&'a mut self, ino: u64) -> Box<Iterator<Item=Result<(OsString, FileAttr), LibcError>> + 'a> {
         let iter = self.inodes
                         .children(ino)
                         .into_iter()
@@ -106,8 +107,8 @@ impl <NFS: NetworkFilesystem> NetFuse<NFS> {
 
 }
 
-fn get_basename(path: &str) -> &str {
-    path.rsplitn(2, "/").next().unwrap() //.to_string()
+fn get_basename(path: &Path) -> &OsStr {
+    path.file_name().expect("missing filename")
 }
 
 impl <NFS: NetworkFilesystem> Filesystem for NetFuse<NFS> {
@@ -115,8 +116,7 @@ impl <NFS: NetworkFilesystem> Filesystem for NetFuse<NFS> {
     // If parent is marked visited, then only perform lookup in the cache
     // otherwise, if the cache lookup is a miss, perform the network lookup
     fn lookup(&mut self, _req: &Request, parent: u64, name: &Path, reply: ReplyEntry) {
-        let name = name.to_string_lossy();
-        println!("lookup(parent={}, name=\"{}\")", parent, name);
+        println!("lookup(parent={}, name=\"{}\")", parent, name.display());
 
         // Clone until MIR NLL lands
         match self.inodes.child(parent, &name).cloned() {
@@ -128,17 +128,13 @@ impl <NFS: NetworkFilesystem> Filesystem for NetFuse<NFS> {
                     println!("lookup - short-circuiting cache miss");
                     reply.error(ENOENT);
                 } else {
-                    let child_path_str = format!("{}/{}", parent_inode.path, name);
-                    let child_path = Path::new(&child_path_str);
+                    let child_path = parent_inode.path.join(&name);
                     match self.nfs.lookup(&child_path) {
                         Ok(child_metadata) => {
                             let inode = self.inodes.insert_metadata(&child_path, &child_metadata);
                             reply.entry(&DEFAULT_TTL, &inode.attr, 0)
                         }
-                        Err(err) => {
-                            println!("lookup error - {}", err);
-                            reply.error(ENOENT);
-                        }
+                        Err(err) => reply.error(err),
                     }
                 }
             }
@@ -185,6 +181,7 @@ impl <NFS: NetworkFilesystem> Filesystem for NetFuse<NFS> {
 
     // TODO: properly support offset
     fn readdir(&mut self, _req: &Request, ino: u64, _fh: u64, offset: u64, mut reply: ReplyDirectory) {
+        println!("readdir(ino={}, fh={}, offset={})", ino, _fh, offset);
         if offset > 0 {
             reply.ok();
             return;
@@ -214,13 +211,13 @@ impl <NFS: NetworkFilesystem> Filesystem for NetFuse<NFS> {
             // read directory from cache
             false => {
                 // FIXME: sometimes cloning is just easier than fixing borrows
-                let parent_path = self.inodes[ino].path.clone();
+                let ref parent_path = self.inodes[ino].path.clone();
                 let ref mut nfs = self.nfs;
-                for (i, next) in nfs.readdir(&Path::new(&parent_path)).enumerate().skip(offset as usize) {
+                for (i, next) in nfs.readdir(&parent_path).enumerate().skip(offset as usize) {
                     match next {
                         Ok((filename, meta)) => {
-                            let child_path = format!("{}/{}", parent_path, filename);
-                            let inode = self.inodes.insert_metadata(&Path::new(&child_path), &meta);
+                            let child_path = parent_path.join(&filename);
+                            let inode = self.inodes.insert_metadata(&child_path, &meta);
                             reply.add(inode.attr.ino, i as u64 + offset + 2, inode.attr.kind, &filename);
                         }
                         Err(err) => { return reply.error(err); }
@@ -238,13 +235,12 @@ impl <NFS: NetworkFilesystem> Filesystem for NetFuse<NFS> {
     }
 
     fn mknod(&mut self, _req: &Request, parent: u64, name: &Path, _mode: u32, _rdev: u32, reply: ReplyEntry) {
-        let name = name.to_string_lossy();
-        println!("mknod(parent={}, name={}, mode=0o{:o})", parent, name, _mode);
+        println!("mknod(parent={}, name={}, mode=0o{:o})", parent, name.display(), _mode);
 
         // TODO: check if we have write access to this parent (or does the FS do that for us)
         // or maybe some `self.nfs.allow_mknod(&path)
 
-        let path = format!("{}/{}", self.inodes[parent].path, name);
+        let path = self.inodes[parent].path.join(&name);
         let now = time::now_utc().to_timespec();
 
         let meta = Metadata {
@@ -271,11 +267,9 @@ impl <NFS: NetworkFilesystem> Filesystem for NetFuse<NFS> {
     }
 
     fn mkdir(&mut self, _req: &Request, parent: u64, name: &Path, _mode: u32, reply: ReplyEntry) {
-        let name = name.to_string_lossy();
-        println!("mkdir(parent={}, name={}, mode=0o{:o})", parent, name, _mode);
+        println!("mkdir(parent={}, name={}, mode=0o{:o})", parent, name.display(), _mode);
 
-        let path_str = format!("{}/{}", self.inodes[parent].path, name);
-        let path = Path::new(&path_str);
+        let path = self.inodes[parent].path.join(&name);
         match self.nfs.mkdir(&path) {
             Ok(_) => {
                 let now = time::now_utc().to_timespec();
@@ -400,11 +394,10 @@ impl <NFS: NetworkFilesystem> Filesystem for NetFuse<NFS> {
     }
 
     fn rmdir(&mut self, _req: &Request, parent: u64, name: &Path, reply: ReplyEmpty) {
-        let name = name.to_string_lossy();
-        println!("rmdir(parent={}, name={})", parent, name);
+        println!("rmdir(parent={}, name={})", parent, name.display());
 
         let ino_opt = self.inodes.child(parent, &name).map(|inode| inode.attr.ino);
-        let path = format!("{}/{}", self.inodes[parent].path, name);
+        let path = self.inodes[parent].path.join(name);
         match self.nfs.rmdir(&Path::new(&path)) {
             Ok(_) => {
                 ino_opt.map(|ino| {
@@ -421,11 +414,10 @@ impl <NFS: NetworkFilesystem> Filesystem for NetFuse<NFS> {
     }
 
     fn unlink(&mut self, _req: &Request, parent: u64, name: &Path, reply: ReplyEmpty) {
-        let name = name.to_string_lossy();
-        println!("unlink(parent={}, name={})", parent, name);
+        println!("unlink(parent={}, name={})", parent, name.display());
 
         let ino_opt = self.inodes.child(parent, &name).map(|inode| inode.attr.ino);
-        let path = format!("{}/{}", self.inodes[parent].path, name);
+        let path = self.inodes[parent].path.join(name);
         match self.nfs.unlink(&Path::new(&path)) {
             Ok(_) => {
                 ino_opt.map(|ino| {

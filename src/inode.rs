@@ -2,21 +2,22 @@ use fuse::{FileType, FileAttr};
 use sequence_trie::SequenceTrie;
 use std::collections::HashMap;
 use std::ops::{Index, IndexMut};
-use std::path::Path;
 use time;
+use std::ffi::OsString;
+use std::path::{Path, PathBuf};
 use super::Metadata;
 
 #[derive(Debug, Clone)]
 pub struct Inode {
-    pub path: String,
+    pub path: PathBuf,
     pub attr: FileAttr,
     pub visited: bool,
 }
 
 impl Inode {
-    pub fn new(path: &str, attr: FileAttr) -> Inode {
+    pub fn new<P: AsRef<Path>>(path: P, attr: FileAttr) -> Inode {
         Inode {
-            path: path.into(),
+            path: PathBuf::from(path.as_ref()),
             attr: attr,
             visited: false,
         }
@@ -25,7 +26,7 @@ impl Inode {
 
 pub struct InodeStore {
     inode_map: HashMap<u64, Inode>,
-    ino_trie: SequenceTrie<String, u64>,
+    ino_trie: SequenceTrie<OsString, u64>,
     uid: u32,
     gid: u32,
 }
@@ -57,7 +58,7 @@ impl InodeStore {
             flags: 0,
         };
 
-        store.insert(Inode::new("", fs_root));
+        store.insert(Inode::new("/", fs_root));
         store
     }
 
@@ -69,9 +70,9 @@ impl InodeStore {
         self.inode_map.get(&ino)
     }
 
-    pub fn insert_metadata(&mut self, path: &Path, metadata: &Metadata) -> &Inode {
+    pub fn insert_metadata<P: AsRef<Path>>(&mut self, path: P, metadata: &Metadata) -> &Inode {
         let ino = self.len() as u64 + 1;
-        println!("insert metadata: {} {}", ino, path.display());
+        println!("insert metadata: {} {}", ino, path.as_ref().display());
 
         let attr = FileAttr {
             ino: ino,
@@ -91,15 +92,15 @@ impl InodeStore {
         };
 
         // TODO: stop using to_string_lossy, and make the inode trie built from OsStr components
-        self.insert(Inode::new(&path.to_string_lossy(), attr));
+        self.insert(Inode::new(path, attr));
         self.get(ino).unwrap()
     }
 
-    pub fn child(&self, ino: u64, name: &str) -> Option<&Inode> {
+    pub fn child(&self, ino: u64, name: &Path) -> Option<&Inode> {
         self.get(ino)
             .and_then(|inode| {
                 let mut sequence = path_to_sequence(&inode.path);
-                sequence.push(name.into());
+                sequence.push(name.as_os_str().into());
                 self.ino_trie.get(&sequence).and_then(|ino| self.get(*ino) )
             })
     }
@@ -190,25 +191,27 @@ impl IndexMut<u64> for InodeStore {
     }
 }
 
-fn path_to_sequence(path: &str) -> Vec<String> {
-    path.split_terminator("/").map(String::from).collect()
+fn path_to_sequence(path: &Path) -> Vec<OsString> {
+    path.iter().map(|s| s.to_owned() ).collect()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use super::super::*;
+    use time;
+    use std::path::Path;
     use fuse::{FileType, FileAttr};
 
     fn new_dir_attr(ino: u64) -> FileAttr {
+        let now = time::now_utc().to_timespec();
         FileAttr {
             ino: ino,
             size: 0,
             blocks: 0,
-            atime: DEFAULT_TIME,
-            mtime: DEFAULT_TIME,
-            ctime: DEFAULT_TIME,
-            crtime: DEFAULT_TIME,
+            atime: now,
+            mtime: now,
+            ctime: now,
+            crtime: now,
             kind: FileType::Directory,
             perm: 0o750,
             nlink: 2,
@@ -220,14 +223,15 @@ mod tests {
     }
 
     fn new_file_attr(ino: u64) -> FileAttr {
+        let now = time::now_utc().to_timespec();
         FileAttr {
             ino: ino,
             size: 42,
             blocks: 0,
-            atime: DEFAULT_TIME,
-            mtime: DEFAULT_TIME,
-            ctime: DEFAULT_TIME,
-            crtime: DEFAULT_TIME,
+            atime: now,
+            mtime: now,
+            ctime: now,
+            crtime: now,
             kind: FileType::Directory,
             perm: 0o640,
             nlink: 2,
@@ -240,27 +244,18 @@ mod tests {
 
     fn build_basic_store() -> InodeStore {
         let mut store = InodeStore::new(0o750, 1000, 1000);
-        store.insert(Inode::new("data", new_dir_attr(2)));
-        store.insert(Inode::new("data/foo.txt", new_file_attr(3)));
-        store.insert(Inode::new("data/bar.txt", new_file_attr(4)));
+        store.insert(Inode::new("/data", new_dir_attr(2)));
+        store.insert(Inode::new("/data/foo.txt", new_file_attr(3)));
+        store.insert(Inode::new("/data/bar.txt", new_file_attr(4)));
         store
     }
 
     #[test]
     fn test_inode_store_get() {
         let store = build_basic_store();
-        assert_eq!(&store.get(1).unwrap().path, "");
-        assert_eq!(&store.get(2).unwrap().path, "data");
-        assert_eq!(&store.get(3).unwrap().path, "data/foo.txt");
-    }
-
-    #[test]
-    fn test_inode_store_get_by_path() {
-        let store = build_basic_store();
-        assert_eq!(store.get_by_path("").unwrap().attr.ino, 1);
-        assert_eq!(store.get_by_path("data").unwrap().attr.ino, 2);
-        assert_eq!(store.get_by_path("data/foo.txt").unwrap().attr.ino, 3);
-        assert_eq!(store.get_by_path("data/bar.txt").unwrap().attr.ino, 4);
+        assert_eq!(&store.get(1).unwrap().path, Path::new("/"));
+        assert_eq!(&store.get(2).unwrap().path, Path::new("/data"));
+        assert_eq!(&store.get(3).unwrap().path, Path::new("/data/foo.txt"));
     }
 
     #[test]
@@ -274,21 +269,11 @@ mod tests {
         assert_eq!(store.get(3).unwrap().attr.size, 23);
     }
 
-    #[test]
-    fn test_inode_store_get_mut_by_path() {
-        let mut store = build_basic_store();
-        {
-            let mut inode = store.get_mut_by_path("data/foo.txt").unwrap();
-            assert_eq!(inode.attr.size, 42);
-            inode.attr.size = 23;
-        }
-        assert_eq!(store.get_by_path("data/foo.txt").unwrap().attr.size, 23);
-    }
 
     #[test]
     fn test_inode_store_parent() {
         let store = build_basic_store();
-        assert_eq!(&store.parent(3).unwrap().path, "data");
+        assert_eq!(&store.parent(3).unwrap().path, Path::new("/data"));
         assert_eq!(store.parent(2).unwrap().attr.ino, 1);
         assert_eq!(store.parent(1).unwrap().attr.ino, 1);
         assert!(&store.parent(999).is_none());
@@ -305,28 +290,22 @@ mod tests {
     #[test]
     fn test_inode_store_child() {
         let store = build_basic_store();
-        assert_eq!(store.child(2, "foo.txt").unwrap().path, "data/foo.txt");
-        assert!(store.child(2, "notfound").is_none());
+        assert_eq!(store.child(2, Path::new("foo.txt")).unwrap().path, Path::new("/data/foo.txt"));
+        assert!(store.child(2, Path::new("notfound")).is_none());
     }
 
     #[test]
     fn test_inode_store_insert_backward() {
         let mut store = InodeStore::new(0o750, 1000, 1000);
-        store.insert(Inode::new("data/foo/bar.txt", new_file_attr(4)));
-        store.insert(Inode::new("data/foo", new_dir_attr(3)));
-        store.insert(Inode::new("data", new_dir_attr(2)));
+        store.insert(Inode::new("/data/foo/bar.txt", new_file_attr(4)));
+        store.insert(Inode::new("/data/foo", new_dir_attr(3)));
+        store.insert(Inode::new("/data", new_dir_attr(2)));
 
         // lookup by ino
-        assert_eq!(&store.get(1).unwrap().path, "");
-        assert_eq!(&store.get(2).unwrap().path, "data");
-        assert_eq!(&store.get(3).unwrap().path, "data/foo");
-        assert_eq!(&store.get(4).unwrap().path, "data/foo/bar.txt");
-
-        // lookup by path
-        assert_eq!(store.get_by_path("").unwrap().attr.ino, 1);
-        assert_eq!(store.get_by_path("data").unwrap().attr.ino, 2);
-        assert_eq!(store.get_by_path("data/foo").unwrap().attr.ino, 3);
-        assert_eq!(store.get_by_path("data/foo/bar.txt").unwrap().attr.ino, 4);
+        assert_eq!(&store.get(1).unwrap().path, Path::new("/"));
+        assert_eq!(&store.get(2).unwrap().path, Path::new("/data"));
+        assert_eq!(&store.get(3).unwrap().path, Path::new("/data/foo"));
+        assert_eq!(&store.get(4).unwrap().path, Path::new("/data/foo/bar.txt"));
     }
 
 }
