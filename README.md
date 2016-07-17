@@ -8,6 +8,9 @@ so the implementation relies heavily on caching and lazy writing to improve perc
 
 [Documentation](https://anowell.github.io/netfuse/netfuse/)
 
+[![Build Status](https://travis-ci.org/anowell/netfuse.svg)](https://travis-ci.org/anowell/netfuse)
+[![Crates.io](https://img.shields.io/crates/v/netfuse.svg?maxAge=2592000)](https://crates.io/crates/netfuse)
+
 ## Implementations
 
 This was originally ripped out of the implementation of algorithmia-fuse mentioned below.
