@@ -1,3 +1,13 @@
+//! netfuse - FUSE abstractions for a network filesystem
+//!
+//! Implementing a network-backed filesystem requries implementing
+//! [`netfuse::NetworkFilesystem`](trait.NetworkFilesystem.html)
+//! and calling [`netfuse::mount`](fn.mount.html) with your implementation.
+//!
+//! Internally, the call to `netfuse::mount` will create a low-level `NetFuse` filesystem
+//! that handles caching, inode number to path translation, offsets and sizes, and
+//! lazily triggering writes to persist.
+
 extern crate fuse;
 extern crate libc;
 extern crate time;
@@ -20,6 +30,7 @@ use time::Timespec;
 
 const DEFAULT_TTL: Timespec = Timespec { sec: 1, nsec: 0 };
 
+/// Options for configuring how the `NetworkFilesystem` will be mounted
 pub struct MountOptions<'a> {
     path: &'a Path,
     uid: u32,
@@ -38,13 +49,22 @@ impl <'a> MountOptions<'a> {
     }
 }
 
+/// Low-level FUSE implementation that is backed by an implementation of `NetworkFilesystem`
+///
+/// The NetFuse implementation manages the the inode store,
+///    including a mapping between inode number and path.
+///    It also provides a data cache, and the abstraction
+///    that manages read/write offsets and lengths, as well as lazy persistence.
 pub struct NetFuse<NFS: NetworkFilesystem> {
+    // stores all the metadata and the mapping between inode number and path
     inodes: InodeStore,
-    nfs: NFS,
-    /// map of inodes to to data buffers - indexed by inode (NOT inode-1)
+    // map of inodes to to data buffers - indexed by inode (NOT inode-1)
     cache: HashMap<u64, CacheEntry>,
+    // implementor that provides a backend store for the filesystem
+    nfs: NFS,
 }
 
+/// Mount the given `NetworkFilesystem`. This function will not return until the filesystem is unmounted.
 pub fn mount<NFS: NetworkFilesystem>(fs: NFS, options: MountOptions) {
     let netfuse = NetFuse {
         nfs: fs,
