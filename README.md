@@ -6,6 +6,8 @@ It provides an internally managed inode cache that allows abstracting FS operati
 It is designed with the assumption that the backing store is over a network,
 so the implementation relies heavily on caching and lazy writing to improve perceived performance.
 
+[Documentation](https://anowell.github.io/netfuse/netfuse/)
+
 ## Implementations
 
 This was originally ripped out of the implementation of algorithmia-fuse mentioned below.
