@@ -1,54 +1,38 @@
-# algorithmia-fuse
-Experimental: FUSE-based Algorithmia FileSystem
+# netfuse
+Experimental: FUSE-based abstraction for networked filesystems
 
-A user-mode virtual filesystem backed by the Algorithmia API. Basically, it handles filesystem requests by turning them into API calls and lazily building a local cache of remote resources. The end result is that you can mount Algorithmia data to a local directory, and use standard file operations to work with Algorithmia data.
+This library provides a wrapper around the pure [rust rewrite of libfuse](https://github.com/zargony/rust-fuse).
+It provides an internally managed inode cache that allows abstracting FS operations into operations on paths.
+It is designed with the assumption that the backing store is over a network,
+so the implementation relies heavily on caching and lazy writing to improve perceived performance.
 
-Screenshots demonstrate basic traversal and read operations from CLI and file explorer:
+## Implementations
 
-![Screenshot](https://dl.dropboxusercontent.com/u/39033486/Algorithmia/algofs-walk-and-grep.png)
+This was originally ripped out of the implementation of algorithmia-fuse mentioned below.
 
-![Screenshot](https://dl.dropboxusercontent.com/u/39033486/Algorithmia/algofs-reading-files.png)
+- [algorithmia-fuse](https://github.com/anowell/algorithmia-fuse) - filesystem for managing data through the Algorithmia platform
 
-## Status
+If you build something with it, open a PR or file an issue to get it added here. :-)
 
-Currently, this is only an experimental filesystem. You should NOT rely on it for critical work.
+## Current caveats
 
-In it's current state, it works as a basic read-write filesystem with several caveats:
+I wouldn't recommend this for any production-quality filesystem today. These are some known caveats:
 
-- Connector support is too limited to be useful, and better support is blocked by the API - see [Issue #1](../../issues/1))
 - Writes persist when closing the last open handle to a file. If the close fails, it's likely the data isn't persisted.
-- Directory listing is permanently cached, so if you change a directory's contents outside of AlgoFS, you have to unmount and remount AlgoFS before those changes appear.
 - The entire inode and file cache lives in RAM, so if you download a 4GB file, it will occupy 4GB of RAM until it is closed.
-- Testing so far is very limited.
+- Directory listing is permanently cached, so if you change a directory's contents outside of the FS, you have to unmount and remount before those changes appear.
+- Testing while mounted has been limited to a handful of common I/O scenarios
 - General network filesystem caveats apply, e.g. some file operations may appear slow
+- Implementing `readdir` will hopefully be much nicer after [impl Trait](https://github.com/rust-lang/rust/issues/34511) lands
 
-See [issues](../../issues) for the full list of known issues. For any unexpected or surprising behavior,
-please [file an issue](https://github.com/anowell/algorithmia-fuse/issues/new).
+Please [file an issue](https://github.com/anowell/netfuse/issues/new) or create a pull request
+if you run into any issue or limitation using this library.
 
 
-## Build, Test, Run, Debug
+## Build, Test
 
-To build and test (tests are pretty barebones):
+To build and test:
 ```
 $ cargo build
 $ cargo test
 ```
-
-To mount the filesystem:
-```
-$ mkdir ~/algofs
-$ target/debug/algofs ~/algofs
-```
-
-The `algofs` executable will print all the current debug output,
-so currently it works best to browse the `~/algofs` from another terminal.
-
-Note: some shell enhancements can cause a lot of extra listing operations.
-And file explorers may trigger a lot of extra reads to preload or preview files.
-
-To stop algofs, unmount it as root. (Note: killing `algofs` will stop request handling, but leaves `~/algofs` as a volume with no transport connected).
-```
-fusermount -u ~/algofs
-# or `sudo umount ~/algofs`
-```
-
