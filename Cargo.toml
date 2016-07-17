@@ -8,7 +8,7 @@ description = "FUSE abstraction for building networked filesystems"
 documentation = "http://anowell.github.io/netfuse/netfuse/"
 repository = "https://github.com/anowell/netfuse"
 readme = "README.md"
-keywords = ["fuse", "filesystem", "nfs", "fs", "network filesystem"]
+keywords = ["fuse", "filesystem", "nfs", "fs"]
 
 [dependencies]
 fuse = "0.2.7"
