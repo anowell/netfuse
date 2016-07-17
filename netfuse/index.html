@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="generator" content="rustdoc">
+    <meta name="description" content="API documentation for the Rust `netfuse` crate.">
+    <meta name="keywords" content="rust, rustlang, rust-lang, netfuse">
+
+    <title>netfuse - Rust</title>
+
+    <link rel="stylesheet" type="text/css" href="../rustdoc.css">
+    <link rel="stylesheet" type="text/css" href="../main.css">
+    
+
+    
+    
+</head>
+<body class="rustdoc">
+    <!--[if lte IE 8]>
+    <div class="warning">
+        This old browser is unsupported and will most likely display funky
+        things.
+    </div>
+    <![endif]-->
+
+    
+
+    <nav class="sidebar">
+        
+        <p class='location'></p><script>window.sidebarCurrent = {name: 'netfuse', ty: 'mod', relpath: '../'};</script>
+    </nav>
+
+    <nav class="sub">
+        <form class="search-form js-only">
+            <div class="search-container">
+                <input class="search-input" name="search"
+                       autocomplete="off"
+                       placeholder="Click or press ‘S’ to search, ‘?’ for more options…"
+                       type="search">
+            </div>
+        </form>
+    </nav>
+
+    <section id='main' class="content mod">
+<h1 class='fqn'><span class='in-band'>Crate <a class='mod' href=''>netfuse</a></span><span class='out-of-band'><span id='render-detail'>
+                   <a id="toggle-all-docs" href="javascript:void(0)" title="collapse all docs">
+                       [<span class='inner'>&#x2212;</span>]
+                   </a>
+               </span><a id='src-0' class='srclink' href='../src/netfuse/src/lib.rs.html#1-460' title='goto source code'>[src]</a></span></h1>
+<div class='docblock'><p>netfuse - FUSE abstractions for a network filesystem</p>
+
+<p>Implementing a network-backed filesystem requries implementing
+<a href="trait.NetworkFilesystem.html"><code>netfuse::NetworkFilesystem</code></a>
+and calling <a href="fn.mount.html"><code>netfuse::mount</code></a> with your implementation.</p>
+
+<p>Internally, the call to <code>netfuse::mount</code> will create a low-level <code>NetFuse</code> filesystem
+that handles caching, inode number to path translation, offsets and sizes, and
+lazily triggering writes to persist.</p>
+</div><h2 id='structs' class='section-header'><a href="#structs">Structs</a></h2>
+<table>
+                       <tr class=' module-item'>
+                           <td><a class='struct' href='struct.DirEntry.html'
+                                  title='netfuse::DirEntry'>DirEntry</a></td>
+                           <td class='docblock short'>
+                                <p>Entry from a directory listing</p>
+                           </td>
+                       </tr>
+                       <tr class=' module-item'>
+                           <td><a class='struct' href='struct.Metadata.html'
+                                  title='netfuse::Metadata'>Metadata</a></td>
+                           <td class='docblock short'>
+                                <p>Metadata representing a file</p>
+                           </td>
+                       </tr>
+                       <tr class=' module-item'>
+                           <td><a class='struct' href='struct.MountOptions.html'
+                                  title='netfuse::MountOptions'>MountOptions</a></td>
+                           <td class='docblock short'>
+                                <p>Options for configuring how the <code>NetworkFilesystem</code> will be mounted</p>
+                           </td>
+                       </tr>
+                       <tr class=' module-item'>
+                           <td><a class='struct' href='struct.NetFuse.html'
+                                  title='netfuse::NetFuse'>NetFuse</a></td>
+                           <td class='docblock short'>
+                                <p>Low-level FUSE implementation that is backed by an implementation of <code>NetworkFilesystem</code></p>
+                           </td>
+                       </tr></table><h2 id='traits' class='section-header'><a href="#traits">Traits</a></h2>
+<table>
+                       <tr class=' module-item'>
+                           <td><a class='trait' href='trait.NetworkFilesystem.html'
+                                  title='netfuse::NetworkFilesystem'>NetworkFilesystem</a></td>
+                           <td class='docblock short'>
+                                <p>Trait to implement to provide a backend store for a <code>NetFuse</code> filesystem</p>
+                           </td>
+                       </tr></table><h2 id='functions' class='section-header'><a href="#functions">Functions</a></h2>
+<table>
+                       <tr class=' module-item'>
+                           <td><a class='fn' href='fn.mount.html'
+                                  title='netfuse::mount'>mount</a></td>
+                           <td class='docblock short'>
+                                <p>Mount the given <code>NetworkFilesystem</code>. This function will not return until the filesystem is unmounted.</p>
+                           </td>
+                       </tr></table><h2 id='types' class='section-header'><a href="#types">Type Definitions</a></h2>
+<table>
+                       <tr class=' module-item'>
+                           <td><a class='type' href='type.LibcError.html'
+                                  title='netfuse::LibcError'>LibcError</a></td>
+                           <td class='docblock short'>
+                                <p>libc Error Code</p>
+                           </td>
+                       </tr></table></section>
+    <section id='search' class="content hidden"></section>
+
+    <section class="footer"></section>
+
+    <aside id="help" class="hidden">
+        <div>
+            <h1 class="hidden">Help</h1>
+
+            <div class="shortcuts">
+                <h2>Keyboard Shortcuts</h2>
+
+                <dl>
+                    <dt>?</dt>
+                    <dd>Show this help dialog</dd>
+                    <dt>S</dt>
+                    <dd>Focus the search field</dd>
+                    <dt>&larrb;</dt>
+                    <dd>Move up in search results</dd>
+                    <dt>&rarrb;</dt>
+                    <dd>Move down in search results</dd>
+                    <dt>&#9166;</dt>
+                    <dd>Go to active search result</dd>
+                    <dt>+</dt>
+                    <dd>Collapse/expand all sections</dd>
+                </dl>
+            </div>
+
+            <div class="infos">
+                <h2>Search Tricks</h2>
+
+                <p>
+                    Prefix searches with a type followed by a colon (e.g.
+                    <code>fn:</code>) to restrict the search to a given type.
+                </p>
+
+                <p>
+                    Accepted types are: <code>fn</code>, <code>mod</code>,
+                    <code>struct</code>, <code>enum</code>,
+                    <code>trait</code>, <code>type</code>, <code>macro</code>,
+                    and <code>const</code>.
+                </p>
+
+                <p>
+                    Search functions by type signature (e.g.
+                    <code>vec -> usize</code> or <code>* -> vec</code>)
+                </p>
+            </div>
+        </div>
+    </aside>
+
+    
+
+    <script>
+        window.rootPath = "../";
+        window.currentCrate = "netfuse";
+        window.playgroundUrl = "";
+    </script>
+    <script src="../jquery.js"></script>
+    <script src="../main.js"></script>
+    
+    <script defer src="../search-index.js"></script>
+</body>
+</html>
