@@ -157,13 +157,19 @@ impl InodeStore {
     //         .and_then(move |ino| self.get_mut(ino))
     // }
 
-    // Only insert new node. Panics if there is an ino collision in the map or trie
     pub fn insert(&mut self, inode: Inode) {
         let ino = inode.attr.ino;
+        let path = inode.path.clone();
         let sequence = path_to_sequence(&inode.path);
 
-        if self.inode_map.insert(ino, inode).is_some() {
-            panic!("Corrupt inode store: reinserted ino {} into inode_map", ino);
+        if let Some(old_inode) = self.inode_map.insert(ino, inode) {
+            if old_inode.path != path {
+                panic!("Corrupted inode store: reinserted conflicting ino {} (path={}, oldpath={})",
+                        ino, path.display(), old_inode.path.display());
+            } else {
+                println!("Updating ino {} at path {}", ino, path.display());
+            }
+
         }
 
         if !self.ino_trie.insert(&sequence, ino) {
