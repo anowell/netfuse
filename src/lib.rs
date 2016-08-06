@@ -148,18 +148,13 @@ impl <NFS: NetworkFilesystem> Filesystem for NetFuse<NFS> {
             None => {
                 // Clone until MIR NLL lands
                 let parent_inode = self.inodes[parent].clone();
-                if parent_inode.visited {
-                    println!("lookup - short-circuiting cache miss");
-                    reply.error(ENOENT);
-                } else {
-                    let child_path = parent_inode.path.join(&name);
-                    match self.nfs.lookup(&child_path) {
-                        Ok(child_metadata) => {
-                            let inode = self.inodes.insert_metadata(&child_path, &child_metadata);
-                            reply.entry(&DEFAULT_TTL, &inode.attr, 0)
-                        }
-                        Err(err) => reply.error(err),
+                let child_path = parent_inode.path.join(&name);
+                match self.nfs.lookup(&child_path) {
+                    Ok(child_metadata) => {
+                        let inode = self.inodes.insert_metadata(&child_path, &child_metadata);
+                        reply.entry(&DEFAULT_TTL, &inode.attr, 0)
                     }
+                    Err(err) => reply.error(err),
                 }
             }
         }
