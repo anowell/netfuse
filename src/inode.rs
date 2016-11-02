@@ -29,6 +29,7 @@ pub struct InodeStore {
     ino_trie: SequenceTrie<OsString, u64>,
     uid: u32,
     gid: u32,
+    last_ino: u64,
 }
 
 impl InodeStore {
@@ -38,6 +39,7 @@ impl InodeStore {
             ino_trie: SequenceTrie::new(),
             uid: uid,
             gid: gid,
+            last_ino: 1, // 1 is reserved for root
         };
 
         let now = time::now_utc().to_timespec();
@@ -62,10 +64,6 @@ impl InodeStore {
         store
     }
 
-    pub fn len(&self) -> usize {
-        self.inode_map.len()
-    }
-
     pub fn get(&self, ino: u64) -> Option<&Inode> {
         self.inode_map.get(&ino)
     }
@@ -76,10 +74,14 @@ impl InodeStore {
     }
 
     pub fn insert_metadata<P: AsRef<Path>>(&mut self, path: P, metadata: &Metadata) -> &Inode {
-        let ino = match self.get_by_path(path.as_ref()) {
-            Some(inode) => inode.attr.ino,
-            None => self.len() as u64 + 1,
-        };
+        // Non-lexical borrows can't come soon enough
+        let ino_opt = self.get_by_path(path.as_ref())
+            .map(|inode| inode.attr.ino );
+        let ino = ino_opt.unwrap_or_else(|| {
+            self.last_ino += 1;
+            self.last_ino
+        });
+
 
         println!("insert metadata: {} {}", ino, path.as_ref().display());
 
