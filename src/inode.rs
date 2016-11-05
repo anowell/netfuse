@@ -24,6 +24,7 @@ impl Inode {
     }
 }
 
+#[derive(Debug)]
 pub struct InodeStore {
     inode_map: HashMap<u64, Inode>,
     ino_trie: SequenceTrie<OsString, u64>,

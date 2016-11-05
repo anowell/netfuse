@@ -1,4 +1,4 @@
-
+#[derive(Debug, Clone)]
 pub struct CacheEntry {
     // Raw data being cached
     pub data: Vec<u8>,

@@ -31,6 +31,7 @@ use time::Timespec;
 const DEFAULT_TTL: Timespec = Timespec { sec: 1, nsec: 0 };
 
 /// Options for configuring how the `NetworkFilesystem` will be mounted
+#[derive(Debug, Copy, Clone)]
 pub struct MountOptions<'a> {
     path: &'a Path,
     uid: u32,
@@ -55,6 +56,7 @@ impl <'a> MountOptions<'a> {
 ///    including a mapping between inode number and path.
 ///    It also provides a data cache, and the abstraction
 ///    that manages read/write offsets and lengths, as well as lazy persistence.
+#[derive(Debug)]
 pub struct NetFuse<NFS: NetworkFilesystem> {
     // stores all the metadata and the mapping between inode number and path
     inodes: InodeStore,

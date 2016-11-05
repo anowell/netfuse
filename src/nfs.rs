@@ -8,6 +8,7 @@ use std::ffi::{OsStr, OsString};
 pub type LibcError = libc::c_int;
 
 /// Metadata representing a file
+#[derive(Debug, Copy, Clone, PartialEq)]
 pub struct Metadata {
     pub size: u64,
     pub atime: Timespec,
@@ -19,6 +20,7 @@ pub struct Metadata {
 }
 
 /// Entry from a directory listing
+#[derive(Debug, Clone, PartialEq)]
 pub struct DirEntry {
     pub filename: OsString,
     pub metadata: Metadata,
