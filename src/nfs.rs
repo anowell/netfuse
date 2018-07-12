@@ -109,8 +109,8 @@ pub trait NetworkFilesystem {
     /// See `man 2 readdir` for more information including appropriate errors to return.
     ///
     /// Note: this method will likely return `impl Iterator<Item=Result<DirEntry, LibcError>>` once `impl Trait` lands in nightly
-    fn readdir(&mut self, _path: &Path) -> Box<Iterator<Item=Result<DirEntry, LibcError>>> {
-        Box::new(vec![Err(ENOSYS)].into_iter())
+    fn readdir(&mut self, _path: &Path) -> Vec<Result<DirEntry, LibcError>> {
+        vec![Err(ENOSYS)]
     }
 
     /// Creates an empty directory for the given path
