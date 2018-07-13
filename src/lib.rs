@@ -234,7 +234,7 @@ impl <NFS: NetworkFilesystem> Filesystem for NetFuse<NFS> {
                 // FIXME: sometimes cloning is just easier than fixing borrows
                 let ref parent_path = self.inodes[ino].path.clone();
                 let ref mut nfs = self.nfs;
-                for (i, next) in nfs.readdir(&parent_path).enumerate().skip(offset as usize) {
+                for (i, next) in nfs.readdir(&parent_path).into_iter().enumerate().skip(offset as usize) {
                     match next {
                         Ok(entry) => {
                             let child_path = parent_path.join(&entry.filename);
