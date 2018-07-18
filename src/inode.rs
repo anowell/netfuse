@@ -84,7 +84,7 @@ impl InodeStore {
         });
 
 
-        println!("insert metadata: {} {}", ino, path.as_ref().display());
+        debug!("insert metadata: {} {}", ino, path.as_ref().display());
 
         let attr = FileAttr {
             ino: ino,
@@ -170,7 +170,7 @@ impl InodeStore {
                 panic!("Corrupted inode store: reinserted conflicting ino {} (path={}, oldpath={})",
                         ino, path.display(), old_inode.path.display());
             } else {
-                println!("Updating ino {} at path {}", ino, path.display());
+                debug!("Updating ino {} at path {}", ino, path.display());
             }
 
         }

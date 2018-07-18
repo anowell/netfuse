@@ -12,6 +12,8 @@ extern crate fuse;
 extern crate libc;
 extern crate time;
 extern crate sequence_trie;
+#[macro_use]
+extern crate log;
 
 mod inode;
 mod cache;
@@ -142,7 +144,7 @@ impl <NFS: NetworkFilesystem> Filesystem for NetFuse<NFS> {
     // If parent is marked visited, then only perform lookup in the cache
     // otherwise, if the cache lookup is a miss, perform the network lookup
     fn lookup(&mut self, _req: &Request, parent: u64, name: &Path, reply: ReplyEntry) {
-        println!("lookup(parent={}, name=\"{}\")", parent, name.display());
+        debug!("lookup(parent={}, name=\"{}\")", parent, name.display());
 
         // Clone until MIR NLL lands
         match self.inodes.child(parent, &name).cloned() {
@@ -167,7 +169,7 @@ impl <NFS: NetworkFilesystem> Filesystem for NetFuse<NFS> {
         match self.inodes.get(ino) {
             Some(inode) => reply.attr(&DEFAULT_TTL, &inode.attr),
             None => {
-                println!("getattr ENOENT: {}", ino);
+                info!("getattr ENOENT: {}", ino);
                 reply.error(ENOENT);
             }
         };
@@ -176,7 +178,7 @@ impl <NFS: NetworkFilesystem> Filesystem for NetFuse<NFS> {
     // If the data cache for this ino not warm, call the network read to populated the cache
     // then use the offset and size to return the right part of the cached data
     fn read(&mut self, _req: &Request, ino: u64, _fh: u64, offset: u64, size: u32, reply: ReplyData) {
-        println!("read(ino={}, fh={}, offset={}, size={})", ino, _fh, offset, size);
+        debug!("read(ino={}, fh={}, offset={}, size={})", ino, _fh, offset, size);
 
         // Determine if we should hit the API
         if let Err(err) = self.read_to_cache_if_needed(ino) {
@@ -194,7 +196,7 @@ impl <NFS: NetworkFilesystem> Filesystem for NetFuse<NFS> {
                 reply.data(&buffer[(offset as usize)..]);
             }
             len => {
-                println!("attempted read beyond buffer for ino {} len={} offset={} size={}", ino, len, offset, size);
+                error!("attempted read beyond buffer for ino {} len={} offset={} size={}", ino, len, offset, size);
                 reply.error(ENOENT);
             }
         }
@@ -202,7 +204,7 @@ impl <NFS: NetworkFilesystem> Filesystem for NetFuse<NFS> {
 
     // TODO: properly support offset
     fn readdir(&mut self, _req: &Request, ino: u64, _fh: u64, offset: u64, mut reply: ReplyDirectory) {
-        println!("readdir(ino={}, fh={}, offset={})", ino, _fh, offset);
+        debug!("readdir(ino={}, fh={}, offset={})", ino, _fh, offset);
         if offset > 0 {
             reply.ok();
             return;
@@ -256,7 +258,7 @@ impl <NFS: NetworkFilesystem> Filesystem for NetFuse<NFS> {
     }
 
     fn mknod(&mut self, _req: &Request, parent: u64, name: &Path, _mode: u32, _rdev: u32, reply: ReplyEntry) {
-        println!("mknod(parent={}, name={}, mode=0o{:o})", parent, name.display(), _mode);
+        debug!("mknod(parent={}, name={}, mode=0o{:o})", parent, name.display(), _mode);
 
         // TODO: check if we have write access to this parent (or does the FS do that for us)
         // or maybe some `self.nfs.allow_mknod(&path)
@@ -288,7 +290,7 @@ impl <NFS: NetworkFilesystem> Filesystem for NetFuse<NFS> {
     }
 
     fn mkdir(&mut self, _req: &Request, parent: u64, name: &Path, _mode: u32, reply: ReplyEntry) {
-        println!("mkdir(parent={}, name={}, mode=0o{:o})", parent, name.display(), _mode);
+        debug!("mkdir(parent={}, name={}, mode=0o{:o})", parent, name.display(), _mode);
 
         let path = self.inodes[parent].path.join(&name);
         match self.nfs.mkdir(&path) {
@@ -311,14 +313,14 @@ impl <NFS: NetworkFilesystem> Filesystem for NetFuse<NFS> {
                 reply.entry(&DEFAULT_TTL, &attr, 0);
             }
             Err(err) => {
-                println!("mkdir error - {}", err);
+                error!("mkdir error - {}", err);
                 reply.error(err);
             }
         }
     }
 
     fn open (&mut self, _req: &Request, ino: u64, flags: u32, reply: ReplyOpen) {
-        println!("open(ino={}, flags=0x{:x})", ino, flags);
+        debug!("open(ino={}, flags=0x{:x})", ino, flags);
         // match flags & O_ACCMODE => O_RDONLY, O_WRONLY, O_RDWR
 
         let mut entry = self.cache.entry(ino).or_insert_with(|| CacheEntry::new());
@@ -327,20 +329,20 @@ impl <NFS: NetworkFilesystem> Filesystem for NetFuse<NFS> {
     }
 
     fn release (&mut self, _req: &Request, ino: u64, fh: u64, flags: u32, _lock_owner: u64, flush: bool, reply: ReplyEmpty) {
-        println!("release(ino={}, fh={}, flags=0x{:x}, flush={})", ino, fh, flags, flush);
+        debug!("release(ino={}, fh={}, flags=0x{:x}, flush={})", ino, fh, flags, flush);
 
         let handles = self.cache.get_mut(&ino).unwrap().released();
 
         // Until a delayed commit is working, also write-on-close
         if handles == 0 {
             if let Err(err) = self.flush_cache_if_needed(ino) {
-                println!("release flush error - {}", err);
+                error!("release flush error - {}", err);
             }
         }
 
         let &CacheEntry {sync, warm, ..} = self.cache.get(&ino).unwrap();
         if handles == 0 && (sync || !warm) {
-            println!("release is purging {} from cache", ino);
+            info!("release is purging {} from cache", ino);
             let _ = self.cache.remove(&ino);
         }
 
@@ -348,12 +350,12 @@ impl <NFS: NetworkFilesystem> Filesystem for NetFuse<NFS> {
     }
 
     fn fsync (&mut self, _req: &Request, ino: u64, fh: u64, datasync: bool, reply: ReplyEmpty) {
-        println!("fsync(ino={}, fh={}, datasync={})", ino, fh, datasync);
+        debug!("fsync(ino={}, fh={}, datasync={})", ino, fh, datasync);
 
         match self.flush_cache_if_needed(ino) {
             Ok(_) => reply.ok(),
             Err(err) => {
-                println!("fsync error - {}", err);
+                error!("fsync error - {}", err);
                 reply.error(EIO);
             }
         }
@@ -361,7 +363,7 @@ impl <NFS: NetworkFilesystem> Filesystem for NetFuse<NFS> {
 
     fn write (&mut self, _req: &Request, ino: u64, fh: u64, offset: u64, data: &[u8], flags: u32, reply: ReplyWrite) {
         // TODO: check if in read-only mode: EROFS
-        println!("write(ino={}, fh={}, offset={}, len={}, flags=0x{:x})", ino, fh, offset, data.len(), flags);
+        debug!("write(ino={}, fh={}, offset={}, len={}, flags=0x{:x})", ino, fh, offset, data.len(), flags);
 
         let is_replace = (offset == 0) && (self.inodes.get(ino).unwrap().attr.size < data.len() as u64);
 
@@ -384,7 +386,7 @@ impl <NFS: NetworkFilesystem> Filesystem for NetFuse<NFS> {
                 entry.data.len() as u64
             }
             None => {
-                println!("write failed to read file");
+                error!("write failed to read file");
                 reply.error(ENOENT);
                 return;
             }
@@ -395,7 +397,7 @@ impl <NFS: NetworkFilesystem> Filesystem for NetFuse<NFS> {
     }
 
     fn setattr (&mut self, _req: &Request, ino: u64, _mode: Option<u32>, uid: Option<u32>, gid: Option<u32>, size: Option<u64>, _atime: Option<Timespec>, _mtime: Option<Timespec>, _fh: Option<u64>, _crtime: Option<Timespec>, _chgtime: Option<Timespec>, _bkuptime: Option<Timespec>, flags:               Option<u32>, reply: ReplyAttr) {
-        println!("setattr(ino={}, mode={:?}, size={:?}, fh={:?}, flags={:?})", ino, _mode, size, _fh, flags);
+        debug!("setattr(ino={}, mode={:?}, size={:?}, fh={:?}, flags={:?})", ino, _mode, size, _fh, flags);
         match self.inodes.get_mut(ino) {
             Some(mut inode) => {
                 if let Some(new_size) = size {
@@ -415,7 +417,7 @@ impl <NFS: NetworkFilesystem> Filesystem for NetFuse<NFS> {
     }
 
     fn rmdir(&mut self, _req: &Request, parent: u64, name: &Path, reply: ReplyEmpty) {
-        println!("rmdir(parent={}, name={})", parent, name.display());
+        debug!("rmdir(parent={}, name={})", parent, name.display());
 
         let ino_opt = self.inodes.child(parent, &name).map(|inode| inode.attr.ino);
         let path = self.inodes[parent].path.join(name);
@@ -428,14 +430,14 @@ impl <NFS: NetworkFilesystem> Filesystem for NetFuse<NFS> {
                 reply.ok()
             },
             Err(err) => {
-                println!("rmdir failed: {}", err);
+                error!("rmdir failed: {}", err);
                 reply.error(EIO);
             }
         }
     }
 
     fn unlink(&mut self, _req: &Request, parent: u64, name: &Path, reply: ReplyEmpty) {
-        println!("unlink(parent={}, name={})", parent, name.display());
+        debug!("unlink(parent={}, name={})", parent, name.display());
 
         let ino_opt = self.inodes.child(parent, &name).map(|inode| inode.attr.ino);
         let path = self.inodes[parent].path.join(name);
@@ -448,7 +450,7 @@ impl <NFS: NetworkFilesystem> Filesystem for NetFuse<NFS> {
                 reply.ok()
             },
             Err(err) => {
-                println!("Delete failed: {}", err);
+                error!("Delete failed: {}", err);
                 reply.error(EIO);
             }
         }
