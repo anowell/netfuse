@@ -31,7 +31,7 @@ impl CacheEntry {
         self.warm = true;
         let end = offset as usize + data.len();
         self.data.resize(end, 0);
-        println!("write(offset={}, data.len={}, end={})", offset, data.len(), end);
+        debug!("write(offset={}, data.len={}, end={})", offset, data.len(), end);
         self.data[(offset as usize)..end].copy_from_slice(data);
     }
 
